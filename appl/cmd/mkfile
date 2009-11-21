@@ -12,7 +12,7 @@ SYSMODULES=\
 	string.m\
 	sys.m\
 	util0.m\
-	tcpmux.m\
+	fdmux.m\
 
 DISBIN=$ROOT/dis
 

@@ -7,9 +7,9 @@
 # each logical channel is a fileio, bidirectional.
 # we always accept data from the network.  if remote sends past the channel window, the whole mux dies.
 # we only accept new fileio writes when the sender window > 0.
-# channels can have priorities for writing, high, normal, low.
-# when something can be written to the network, we first exhaust high priority
-# in round-robin fashion (per write, not number of bytes), then normal, then low.
+# channels can have priorities for writing, highest, high, normal, low, lowest.
+# when something can be written to the network, we first exhaust higher priority
+# in round-robin fashion (per write, not number of bytes), then the next in line.
 # remote priority (for writing from remote to local for a channel) can be set by a ctl message.
 #
 # ctl messages are simple utf-8 strings, quoted strings, no newline, utf-8, the first word is the command:
@@ -18,7 +18,7 @@
 # - reject num string
 # - close
 # - win x
-# - prio x  (high=0, normal=1, low=2)
+# - prio x  (highest=0, high=1, normal=2, low=3, lowest=4)
 # - error string
 #
 # for accept & reject, num is the number of the channel from which the open was sent.
@@ -160,9 +160,9 @@ Mux.reject(x: self ref Mux, rnum: int, msg: string): int
 	return 0;
 }
 
-Mux.priority(x: self ref Mux, fd: ref Sys->FD, prio: int): int
+Mux.priority(x: self ref Mux, fd: ref Sys->FD, prio: int, where: int): int
 {
-	x.prioc <-= (fd.fd, prio, rc := chan of string);
+	x.prioc <-= (fd.fd, prio, where, rc := chan of string);
 	err := <-rc;
 	if(err != nil) {
 		sys->werrstr(err);
@@ -220,10 +220,9 @@ start(fd: ref Sys->FD, announce: int): ref Mux
 	if(announce)
 		xd.lnumgen += 10; # for excercising different remote & local nums
 	xd.announce = announce;
-	xd.rings = array[3] of ref Ring;
-	xd.rings[Phigh] = Ring.new(Phigh);
-	xd.rings[Pnormal] = Ring.new(Pnormal);
-	xd.rings[Plow] = Ring.new(Plow);
+	xd.rings = array[Pend] of ref Ring;
+	for(i := 0; i < len xd.rings; i++)
+		xd.rings[i] = Ring.new(i);
 	xd.stop = 0;
 
 	xd.x = x := ref Mux;
@@ -231,7 +230,7 @@ start(fd: ref Sys->FD, announce: int): ref Mux
 	x.listenc = chan of chan of int;
 	x.acceptc = chan of (ref Sys->FileIO, int, int, chan of string);
 	x.rejectc = chan of (int, string);
-	x.prioc = chan of (int, int, chan of string);
+	x.prioc = chan of (int, int, int, chan of string);
 	x.stopc = chan of int;
 	x.filegen = 1;
 
@@ -296,7 +295,7 @@ srv(xd: ref Muxdat, fd: ref Sys->FD)
 		xd.waitrnums = del(xd.waitrnums, rnum);
 		spawn write0(fd, pack(0, Ctl, aprint("reject %d %q", rnum, err)));
 
-	(fdnum, prio, rc) := <-x.prioc =>
+	(fdnum, prio, where, rc) := <-x.prioc =>
 		say("srv, prio");
 		if(xd.err != nil) {
 			rc <-= xd.err;
@@ -307,8 +306,10 @@ srv(xd: ref Muxdat, fd: ref Sys->FD)
 			rc <-= "cannot find link";
 			continue;
 		}
-		setprio(xd, l, prio);
-		wctl(xd, l, sprint("prio %d", prio));
+		if(where&Local)
+			setprio(xd, l, prio);
+		if(where&Remote)
+			wctl(xd, l, sprint("prio %d", prio));
 		rc <-= nil;
 
 	<-x.stopc =>

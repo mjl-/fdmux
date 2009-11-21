@@ -77,7 +77,7 @@ srv(fd: ref Sys->FD)
 	fdb := mux.accept(numb);
 	if(fdb == nil)
 		fail(sprint("accept b: %r"));
-	mux.priority(fdb, Fdmux->Phigh);
+	mux.priority(fdb, Fdmux->Phigh, fdmux->Local|fdmux->Remote);
 
 	say("reading & writing...");
 	buf := array[1024] of byte;

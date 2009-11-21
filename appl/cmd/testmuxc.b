@@ -51,7 +51,7 @@ init(nil: ref Draw->Context, args: list of string)
 	fda := mux.open();
 	if(fda == nil)
 		fail(sprint("open: %r"));
-	mux.priority(fda, fdmux->Phigh);
+	mux.priority(fda, fdmux->Phigh, fdmux->Local|fdmux->Remote);
 
 	say("open b");
 	fdb := mux.open();

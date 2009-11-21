@@ -38,7 +38,6 @@ mechiel lukkien, reachable at mechiel@ueber.net or mechiel@xs4all.nl.
 # todo
 
 - perhaps change way to connect/listen for connections.  e.g. by "port" number.
-- allow setting remote-only or local-only priority.  not always the same for local & remote.
 - there still seems to be a hang?
 - find way to make this more elegant.
 - have high/low water mark for sending win messages?  we send many now
