@@ -1,0 +1,6 @@
+<../mkconfig
+
+MODS=\
+	fdmux.m\
+
+<mkmod

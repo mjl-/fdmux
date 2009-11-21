@@ -1,0 +1,48 @@
+# status
+
+works, needs a review for races.
+
+
+# intro
+
+fdmux multiplexes a file descriptor, e.g. a tcp connection.  each
+communication channel allows two-way communication and is accessed
+as a normal file descriptor.  priority for file descriptors can be
+set.
+
+
+# install
+
+make sure you have "util" installed.
+
+change mkconfig if you do not have $ROOT set.  now "mk" to compile
+and "mk install" to install the files.
+
+when building from within inferno, insert SYSHOST=Inferno and ROOT=
+in the mk invocations to override the values in the mkconfig.
+
+
+# latest version
+
+the latest version can be found at:
+
+	http://www.ueber.net/code/r/fdmux
+
+
+# licence & author
+
+all files are in the public domain.  this code has been written by
+mechiel lukkien, reachable at mechiel@ueber.net or mechiel@xs4all.nl.
+
+
+# todo
+
+- perhaps change way to connect/listen for connections.  e.g. by "port" number.
+- allow setting remote-only or local-only priority.  not always the same for local & remote.
+- there still seems to be a hang?
+- find way to make this more elegant.
+- have high/low water mark for sending win messages?  we send many now
+- perhaps let open() and accept() return two fd's, one for writing and one for reading.
+  and have protocol messages for hanging up one of the sides.
+- think about a smarter way to deal with windows.  i.e. start with
+  small one, then increase when bandwidth increases.

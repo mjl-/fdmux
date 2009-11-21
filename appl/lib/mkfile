@@ -1,0 +1,16 @@
+<../../mkconfig
+
+TARG=\
+	fdmux.dis\
+
+MODULES=\
+
+SYSMODULES=\
+	sys.m\
+	string.m\
+	util0.m\
+	fdmux.m\
+
+DISBIN=$ROOT/dis/lib
+
+<$ROOT/mkfiles/mkdis

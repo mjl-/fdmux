@@ -1,0 +1,19 @@
+<../../mkconfig
+
+TARG=\
+	testmuxc.dis\
+	testmuxs.dis\
+
+MODULES=\
+
+SYSMODULES=\
+	arg.m\
+	draw.m\
+	string.m\
+	sys.m\
+	util0.m\
+	tcpmux.m\
+
+DISBIN=$ROOT/dis
+
+<$ROOT/mkfiles/mkdis
