@@ -2,17 +2,17 @@
 # 2 bytes rnum, 1 byte type (ctl=0, data=1), 2 bytes length, length bytes data.
 # rnum is the remote num, the number of the channel on the sender side.
 # ctl messages can always be written.  data messages must be within the bounds of the window.
-# the ctl messages open/destroy nums, and change the windows.
+# the ctl messages open/destroy nums, and increase the windows.
 # 
 # each logical channel is a fileio, bidirectional.
 # we always accept data from the network.  if remote sends past the channel window, the whole mux dies.
-# we only accept new fileio writes when the sender window > 0.
-# channels can have priorities for writing, highest, high, normal, low, lowest.
+# we only accept new fileio writes when its sender window > 0.
+# channels can have priorities for writing: highest, high, normal, low, lowest.
 # when something can be written to the network, we first exhaust higher priority
 # in round-robin fashion (per write, not number of bytes), then the next in line.
 # remote priority (for writing from remote to local for a channel) can be set by a ctl message.
 #
-# ctl messages are simple utf-8 strings, quoted strings, no newline, utf-8, the first word is the command:
+# ctl messages are simple utf-8 quoted strings, no newline, the first word is the command:
 # - open
 # - accept num
 # - reject num string
@@ -34,14 +34,14 @@ include "string.m";
 	str: String;
 include "util0.m";
 	util: Util0;
-	min, max, kill, pid, p16, g16, l2a, rev: import util;
+	hex, min, max, kill, pid, p16, g16, l2a, rev: import util;
 include "tables.m";
 	tables: Tables;
 	Table: import tables;
 include "fdmux.m";
 
 Ctl, Data: con iota;
-Maxdata: con 64*1024;
+Maxdata: con 64*1024-1;
 
 Muxdat: adt {
 	x:	ref Mux;
@@ -207,7 +207,7 @@ start(fd: ref Sys->FD, announce: int): ref Mux
 {
 	if(sys == nil)
 		init();
-	say("start");
+	if(dflag) say("start");
 
 	xd := ref Muxdat;
 	xd.fd = fd;
@@ -254,10 +254,10 @@ srv(xd: ref Muxdat, fd: ref Sys->FD)
 	fioreadc := chan of (ref Link, (int, int, int, Sys->Rread));
 	fiowritec := chan of (ref Link, (int, array of byte, int, Sys->Rwrite));
 
-	say("srv, starting");
+	if(dflag) say("srv, starting");
 	for(;;) alt {
 	rc := <-x.listenc =>
-		say("srv, listen");
+		if(dflag) say("srv, listen");
 		if(xd.listener != nil || xd.err != nil) {
 			rc <-= -1;
 			continue;
@@ -266,7 +266,7 @@ srv(xd: ref Muxdat, fd: ref Sys->FD)
 		dolistens(xd);
 
 	(fio, rnum, fdnum, rc) := <-x.acceptc =>
-		say("srv, accept");
+		if(dflag) say("srv, accept");
 		if(xd.err != nil) {
 			rc <-= xd.err;
 			continue;
@@ -291,12 +291,12 @@ srv(xd: ref Muxdat, fd: ref Sys->FD)
 		rc <-= nil;
 
 	(rnum, err) := <-x.rejectc =>
-		say("srv, reject");
+		if(dflag) say("srv, reject");
 		xd.waitrnums = del(xd.waitrnums, rnum);
 		spawn write0(fd, pack(0, Ctl, aprint("reject %d %q", rnum, err)));
 
 	(fdnum, prio, where, rc) := <-x.prioc =>
-		say("srv, prio");
+		if(dflag) say("srv, prio");
 		if(xd.err != nil) {
 			rc <-= xd.err;
 			continue;
@@ -313,7 +313,7 @@ srv(xd: ref Muxdat, fd: ref Sys->FD)
 		rc <-= nil;
 
 	<-x.stopc =>
-		say("srv, stop");
+		if(dflag) say("srv, stop");
 		xd.stop = 1;
 		for(l := all(xd.llinks); l != nil; l = tl l) {
 			ll := hd l;
@@ -325,7 +325,7 @@ srv(xd: ref Muxdat, fd: ref Sys->FD)
 		}
 
 	(rnum, typ, buf, err) := <-readc =>
-		say(sprint("srv, netread, rnum %d, n %d, err %q", rnum, len buf, err));
+		if(dflag) say(sprint("srv, netread, rnum %d, n %d, err %q", rnum, len buf, err));
 		if(err != nil) {
 			error(xd, err);
 			continue;
@@ -358,7 +358,7 @@ srv(xd: ref Muxdat, fd: ref Sys->FD)
 		linkreads(xd, l);
 
 	err := <-writtenc =>
-		say("srv, written");
+		if(dflag) say("srv, written");
 		if(err != nil) {
 			error(xd, err);
 			continue;
@@ -367,7 +367,7 @@ srv(xd: ref Muxdat, fd: ref Sys->FD)
 		nextwrite(xd);
 
 	(fio, fdnum, rc) := <-x.openc =>
-		say("srv, open");
+		if(dflag) say("srv, open");
 		if(xd.err != nil) {
 			rc <-= xd.err;
 			continue;
@@ -382,7 +382,7 @@ srv(xd: ref Muxdat, fd: ref Sys->FD)
 
 	(l, tup) := <-fioreadc =>
 		(nil, count, fid, rc) := tup;
-		say(sprint("srv, fioread, count %d, fid %d, rc nil %d", count, fid, rc==nil));
+		if(dflag) say(sprint("srv, fioread, count %d, fid %d, rc nil %d", count, fid, rc==nil));
 		if(rc == nil)
 			continue;
 		if(l.fid < 0)
@@ -395,7 +395,7 @@ srv(xd: ref Muxdat, fd: ref Sys->FD)
 	(l, tup) := <-fiowritec =>
 		l.writeok = 0;
 		(nil, data, fid, wc) := tup;
-		say(sprint("srv, fiowrite, len data %d, fid %d, wc nil %d", len data, fid, wc==nil));
+		if(dflag) say(sprint("srv, fiowrite, len data %d, fid %d, wc nil %d", len data, fid, wc==nil));
 		if(wc == nil) {
 			if(!l.lclosed) {
 				l.lclosed = 1;
@@ -433,7 +433,7 @@ args := array[] of {
 ctl(xd: ref Muxdat, rnum: int, buf: array of byte)
 {
 	s := string buf;
-	say("ctl: "+s);
+	if(dflag) say("ctl: "+s);
 	t := l2a(str->unquoted(s));
 	if(len t == 0 || (i := index(cmds, t[0])) < 0 || len t-1 != args[i])
 		return error(xd, "bad ctl message from remote");
@@ -541,12 +541,12 @@ newlink(lnum, rnum, fdnum: int, fio: ref Sys->FileIO, rc: chan of string): ref L
 
 dolistens(xd: ref Muxdat)
 {
-	say(sprint("dolistens, len listenrnums %d, listener nil %d", len xd.listenrnums, xd.listener==nil));
+	if(dflag) say(sprint("dolistens, len listenrnums %d, listener nil %d", len xd.listenrnums, xd.listener==nil));
 	if(xd.listenrnums == nil || xd.listener == nil)
 		return;
 	l := revint(xd.listenrnums);
 	rnum := hd l;
-	say(sprint("dolistens, returning rnum %d", rnum));
+	if(dflag) say(sprint("dolistens, returning rnum %d", rnum));
 	xd.listenrnums = revint(tl l);
 	xd.listener <-= rnum;
 	xd.listener = nil;
@@ -555,7 +555,7 @@ dolistens(xd: ref Muxdat)
 
 error(xd: ref Muxdat, err: string)
 {
-	say("error: "+err);
+	if(dflag) say("error: "+err);
 	xd.err = err;
 	for(l := all(xd.llinks); l != nil; l = tl l)
 		linkerror(xd, hd l, err);
@@ -570,7 +570,8 @@ linkerror(xd: ref Muxdat, l: ref Link, err: string)
 
 	for(w := l.wreqs; w != nil; w = tl w) {
 		(nil, nil, nil, wc) := *hd w;
-		wc <-= (-1, err);
+		if(wc != nil)
+			wc <-= (-1, err);
 	}
 	l.rreqs = nil;
 	l.rbufs = nil;
@@ -585,7 +586,7 @@ linkerror(xd: ref Muxdat, l: ref Link, err: string)
 
 linkreads(xd: ref Muxdat, l: ref Link)
 {
-	say(sprint("linkreads, lnum %d, rnum %d, recvwin %d, %d rreqs, %d rbufs, err %q, lclosed %d, rclosed %d",
+	if(dflag) say(sprint("linkreads, lnum %d, rnum %d, recvwin %d, %d rreqs, %d rbufs, err %q, lclosed %d, rclosed %d",
 		l.lnum, l.rnum, l.recvwin, len l.rreqs, len l.rbufs, l.err, l.lclosed, l.rclosed));
 
 	if(l.rclosed) {
@@ -643,7 +644,7 @@ linkreads(xd: ref Muxdat, l: ref Link)
 
 linkwrite(xd: ref Muxdat, l: ref Link): int
 {
-	say(sprint("linkwrite, lnum %d, rnum %d, sendwin %d, %d wreqs, wreqnb %d, err %q, lclosed %d, rclosed %d",
+	if(dflag) say(sprint("linkwrite, lnum %d, rnum %d, sendwin %d, %d wreqs, wreqnb %d, err %q, lclosed %d, rclosed %d",
 		l.lnum, l.rnum, l.sendwin, len l.wreqs, l.wreqnb, l.err, l.lclosed, l.rclosed));
 
 	if(l.err != nil) {
@@ -686,7 +687,7 @@ tryclose(xd: ref Muxdat, l: ref Link): int
 {
 	closed := l.rclosed && l.lclosed && l.fid < 0 && l.wreqs == nil && l.rbufs == nil;
 	if(closed) {
-		say(sprint("killing link, lnum %d", l.lnum));
+		if(dflag) say(sprint("killing link, lnum %d", l.lnum));
 		kill(l.fiopid);
 		xd.llinks.del(l.lnum);
 		xd.rlinks.del(l.rnum);
@@ -695,7 +696,7 @@ tryclose(xd: ref Muxdat, l: ref Link): int
 	}
 
 	if(xd.stop && len all(xd.llinks) == 0) {
-		say("killing srv");
+		if(dflag) say("killing srv");
 		kill(xd.readerpid);
 		kill(xd.writerpid);
 		kill(xd.srvpid); # self
@@ -716,7 +717,7 @@ pack(lnum: int, typ: int, d: array of byte): array of byte
 
 wctl(xd: ref Muxdat, l: ref Link, s: string)
 {
-	say("wctl: "+s);
+	if(dflag) say("wctl: "+s);
 	l.wreqs = ref (0, array of byte s, -1, nil)::l.wreqs;
 	nextwrite(xd);
 }
