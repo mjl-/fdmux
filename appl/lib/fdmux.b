@@ -41,7 +41,9 @@ include "tables.m";
 include "fdmux.m";
 
 Ctl, Data: con iota;
-Maxdata: con 64*1024-1;
+Datamax:	con 64*1024-1;
+Windowmax:	con 128*1024;	# max & default window size
+Windowhold:	con 16*1024;	# only send win messages for window >= Windowhold
 
 Muxdat: adt {
 	x:	ref Mux;
@@ -86,6 +88,7 @@ Link: adt {
 	sendwin:	int;
 	rreqs:		list of ref (int, int, Sys->Rread); # count, fid, rc
 	rbufs:		list of array of byte;
+	nread:		int;	# number of bytes to increase recvwin with
 	wreqs:		list of ref (int, array of byte, int, Sys->Rwrite); # count, data, fid, wc;  only data is set for ctl messages!
 	wreqnb:		int;	# number of bytes of data (not ctl) in wreqs
 	err:		string;	# error for new reads/writes
@@ -286,7 +289,7 @@ srv(xd: ref Muxdat, fd: ref Sys->FD)
 		l.fiopid = <-pidc;
 
 		wctl(xd, l, sprint("accept %d", rnum));
-		l.recvwin = 128*1024;
+		l.recvwin = Windowmax;
 		wctl(xd, l, sprint("win %d", l.recvwin));
 		rc <-= nil;
 
@@ -462,7 +465,7 @@ ctl(xd: ref Muxdat, rnum: int, buf: array of byte)
 		xd.rlinks.add(l.rnum, l);
 		l.openrc <-= nil;
 		l.openrc = nil;
-		l.recvwin = 128*1024;
+		l.recvwin = Windowmax;
 		wctl(xd, l, sprint("win %d", l.recvwin));
 		
 	"reject" =>
@@ -536,7 +539,7 @@ setprio(xd: ref Muxdat, l: ref Link, prio: int)
 
 newlink(lnum, rnum, fdnum: int, fio: ref Sys->FileIO, rc: chan of string): ref Link
 {
-	return ref Link (lnum, rnum, fdnum, Pnormal, fio, -1, -1, 0, 0, nil, nil, nil, 0, "", 0, 0, rc, 0, chan[1] of int);
+	return ref Link (lnum, rnum, fdnum, Pnormal, fio, -1, -1, 0, 0, nil, nil, 0, nil, 0, "", 0, 0, rc, 0, chan[1] of int);
 }
 
 dolistens(xd: ref Muxdat)
@@ -598,7 +601,6 @@ linkreads(xd: ref Muxdat, l: ref Link)
 		return;
 	}
 
-	nread := 0;
 	while(l.rreqs != nil && l.rbufs != nil) {
 		l.rreqs = rev(l.rreqs);
 		l.rbufs = rev(l.rbufs);
@@ -619,7 +621,7 @@ linkreads(xd: ref Muxdat, l: ref Link)
 				l.rbufs = rbuf[n:]::l.rbufs;
 		}
 		rc <-= (buf[:o], nil);
-		nread += o;
+		l.nread += o;
 
 		l.rbufs = rev(l.rbufs);
 	}
@@ -636,9 +638,10 @@ linkreads(xd: ref Muxdat, l: ref Link)
 		return;
 	}
 
-	if(nread > 0) {
-		wctl(xd, l, sprint("win %d", nread));
-		l.recvwin += nread;
+	if(l.nread >= Windowhold) {
+		wctl(xd, l, sprint("win %d", l.nread));
+		l.recvwin += l.nread;
+		l.nread = 0;
 	}
 }
 
@@ -667,7 +670,7 @@ linkwrite(xd: ref Muxdat, l: ref Link): int
 	if(wc == nil) {
 		xd.writec <-= pack(l.lnum, Ctl, data);
 	} else {
-		n := min(Maxdata, min(l.sendwin, len data));
+		n := min(Datamax, min(l.sendwin, len data));
 		xd.writec <-= pack(l.lnum, Data, data[:n]);
 		l.sendwin -= n;
 		l.wreqnb -= n;

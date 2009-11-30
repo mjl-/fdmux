@@ -40,7 +40,6 @@ mechiel lukkien, reachable at mechiel@ueber.net or mechiel@xs4all.nl.
 - perhaps change way to connect/listen for connections.  e.g. by "port" number.
 - there still seems to be a hang?
 - find way to make this more elegant.
-- have high/low water mark for sending win messages?  we send many now
 - perhaps let open() and accept() return two fd's, one for writing and one for reading.
   and have protocol messages for hanging up one of the sides.
 - think about a smarter way to deal with windows.  i.e. start with
